@@ -83,6 +83,12 @@ internal static class AvaloniaClipboard
         return true;
     });
 
+    public static bool SetCombined(byte[] png, byte[] dib, string[] files, string text) => DesktopServices.Run(() =>
+    {
+        WindowsClipboard.SetCombined(DesktopServices.GetWindow().TryGetPlatformHandle()?.Handle ?? IntPtr.Zero, png, dib, files, text);
+        return true;
+    });
+
     private static OwnedImageTransfer CreateImageTransfer(byte[] png, string html)
     {
         using MemoryStream stream = new(png, writable: false);

@@ -38,6 +38,8 @@ namespace ShareX.HelpersLib;
 internal static class WindowsClipboard
 {
     private const uint CF_DIB = 8;
+    private const uint CF_UNICODETEXT = 13;
+    private const uint CF_HDROP = 15;
     private const uint GMEM_MOVEABLE = 0x0002;
     private const int OpenRetryCount = 10;
     private const int OpenRetryDelay = 50;
@@ -58,6 +60,39 @@ internal static class WindowsClipboard
         {
             NativeMethods.CloseClipboard();
         }
+    }
+
+    // Writes any subset of image (CF_DIB + PNG), file drop list (CF_HDROP) and Unicode text in a single
+    // open/empty/close cycle, so the formats coexist on the clipboard instead of replacing each other.
+    public static void SetCombined(IntPtr owner, byte[] png, byte[] dib, string[] files, string text)
+    {
+        if (owner == IntPtr.Zero) throw new InvalidOperationException("Clipboard owner window is unavailable.");
+        Open(owner);
+        try
+        {
+            if (!NativeMethods.EmptyClipboard()) throw new Win32Exception();
+            if (dib != null) SetData(CF_DIB, dib);
+            if (png != null) SetData(RegisterFormat(ClipboardHelpers.FORMAT_PNG), png);
+            if (files != null && files.Length > 0) SetData(CF_HDROP, CreateDropFiles(files));
+            if (!string.IsNullOrEmpty(text)) SetData(CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0"));
+        }
+        finally
+        {
+            NativeMethods.CloseClipboard();
+        }
+    }
+
+    // DROPFILES header (pFiles, pt.x, pt.y, fNC, fWide = 20 bytes) followed by a double-null-terminated
+    // list of UTF-16 paths.
+    private static byte[] CreateDropFiles(string[] files)
+    {
+        const int headerSize = 20;
+        byte[] list = Encoding.Unicode.GetBytes(string.Join("\0", files) + "\0\0");
+        byte[] data = new byte[headerSize + list.Length];
+        BitConverter.GetBytes(headerSize).CopyTo(data, 0);
+        BitConverter.GetBytes(1).CopyTo(data, 16);
+        list.CopyTo(data, headerSize);
+        return data;
     }
 
     private static void Open(IntPtr owner)

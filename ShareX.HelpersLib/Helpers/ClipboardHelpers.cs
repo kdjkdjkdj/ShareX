@@ -112,6 +112,56 @@ namespace ShareX.HelpersLib
             catch (Exception e) { DebugHelper.WriteException(e, "Clipboard copy file failed."); return false; }
         }
 
+        // Combines image, file drop and Unicode text into one clipboard write, so the typical
+        // after-capture combination "image + file + file path" does not end up with each job
+        // silently overwriting the previous one. Any subset of the three formats is supported:
+        // pass null (or empty) for the pieces that should not be written. The HTML <img> fragment
+        // is deliberately omitted: when a file drop list is also present, apps like Word prefer
+        // HTML over Bitmap and the relative src="" attribute doesn't resolve on the recipient
+        // side, so the paste degrades to an attachment.
+        public static bool CopyCombined(Image img, string fileDropPath, string textPayload)
+        {
+            bool hasImage = img != null;
+            bool hasFileDrop = !string.IsNullOrEmpty(fileDropPath);
+            bool hasText = !string.IsNullOrEmpty(textPayload);
+
+            if (!hasImage && !hasFileDrop && !hasText)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    byte[] png = null, dib = null;
+
+                    if (hasImage)
+                    {
+                        using MemoryStream ms = new();
+                        img.Save(ms, ImageFormat.Png);
+                        png = ms.ToArray();
+                        dib = CreateDib(img);
+                    }
+
+                    return AvaloniaClipboard.SetCombined(png, dib, hasFileDrop ? new[] { fileDropPath } : null, hasText ? textPayload : null);
+                }
+
+                // Other platforms: no atomic multi-format write available, keep the sequential behaviour.
+                bool result = false;
+                if (hasImage) result |= CopyImage(img);
+                if (hasFileDrop) result |= CopyFile(fileDropPath);
+                if (hasText) result |= CopyText(textPayload);
+                return result;
+            }
+            catch (Exception e)
+            {
+                DebugHelper.WriteException(e, "Clipboard combined copy failed.");
+            }
+
+            return false;
+        }
+
         public static bool CopyImageFromFile(string path)
         {
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
